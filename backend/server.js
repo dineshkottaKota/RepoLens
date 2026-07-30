@@ -85,11 +85,14 @@ app.post('/api/agent/ingest-github', async (req, res) => {
     // 4. Unit & Integration Test Case Synthesis
     const testSuites = await generateTestSuites(astSummaries, validLoadedFiles, globalKnowledgeGraph, activeApiKey);
 
-    // 5. Graph-RAG Subgraph Traversal (30k+ LOC Management)
+    // 5. UNWIND Bulk Batch Sync: Write 100% of Nodes & Edges to Neo4j
+    await globalKnowledgeGraph.syncToNeo4j();
+
+    // 6. Graph-RAG Subgraph Traversal (30k+ LOC Management)
     const primaryFile = validLoadedFiles[0]?.path || 'index.js';
     const subgraphData = globalKnowledgeGraph.extractSubgraph(primaryFile, maxTokenBudget);
 
-    // 6. Export Full Cytoscape.js Graph Data
+    // 7. Export Full Cytoscape.js Graph Data
     const graphData = globalKnowledgeGraph.exportGraphJSON();
 
     return res.json({
