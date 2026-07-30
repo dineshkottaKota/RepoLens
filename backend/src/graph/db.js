@@ -11,7 +11,7 @@ export class CodeKnowledgeGraph {
     this.nodes = new Map(); // id -> Node
     this.edges = [];        // Edge Array
 
-    // Neo4j Driver Connection Setup
+    // Neo4j Cloud (AuraDB) or Local Connection Setup
     const uri = process.env.NEO4J_URI || 'bolt://localhost:7687';
     const user = process.env.NEO4J_USER || 'neo4j';
     const password = process.env.NEO4J_PASSWORD || 'password';
@@ -19,7 +19,8 @@ export class CodeKnowledgeGraph {
     try {
       this.driver = neo4j.driver(uri, neo4j.auth.basic(user, password));
       this.isNeo4jActive = true;
-      console.log(`[Neo4j Graph Engine] Initialized Neo4j Driver for ${uri}`);
+      const isCloud = uri.startsWith('neo4j+s://') || uri.includes('databases.neo4j.io');
+      console.log(`[Neo4j ${isCloud ? 'AuraDB Cloud' : 'Graph Engine'}] Connected to ${uri}`);
     } catch (err) {
       console.log(`[Neo4j Graph Engine Warning] Running in dual fallback mode (${err.message})`);
       this.driver = null;
