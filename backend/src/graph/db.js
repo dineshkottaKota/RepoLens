@@ -37,6 +37,11 @@ export class CodeKnowledgeGraph {
       const result = await session.run(query, params);
       return result;
     } catch (err) {
+      if (err.code === 'ServiceUnavailable' || err.message.includes('No routing servers')) {
+        // Suppress repeated connection logs if AuraDB instance is paused on console.neo4j.io
+        this.isNeo4jActive = false;
+        console.log('[Neo4j AuraDB Info] Instance is currently Paused or Resuming on console.neo4j.io. Falling back to in-memory graph engine.');
+      }
       return null;
     } finally {
       await session.close();
