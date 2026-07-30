@@ -46,10 +46,10 @@ app.post('/api/agent/ingest-github', async (req, res) => {
     // 1. Fetch Repository Tree
     const tree = await fetchGitHubRepoTree(owner, repo, branch);
     
-    // Fetch top main source files for immediate graph indexing (prioritizing code logic files)
+    // Fetch all main source files for comprehensive graph indexing (prioritizing code logic files)
     const isCodeFile = (path) => /\.(js|ts|jsx|tsx|py|java|go|cs|cpp|c|rs|php|sql)$/i.test(path) && !/(package|tsconfig|config|\.min\.|\.d\.ts)/i.test(path);
     const sortedTree = [...tree].sort((a, b) => (isCodeFile(b.path) ? 1 : 0) - (isCodeFile(a.path) ? 1 : 0));
-    const targetFiles = sortedTree.slice(0, 10);
+    const targetFiles = sortedTree.slice(0, 50);
 
     const loadedFiles = await Promise.all(targetFiles.map(async item => {
       const content = await fetchFileContent(owner, repo, item.path, branch);

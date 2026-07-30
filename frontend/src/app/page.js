@@ -63,9 +63,21 @@ export default function PlatformDashboard() {
   // Filter Graph Nodes
   const filteredNodes = useMemo(() => {
     if (!result || !result.graphData) return [];
-    if (nodeFilter === 'ALL') return result.graphData.nodes;
-    return result.graphData.nodes.filter(n => n.data.type === nodeFilter);
-  }, [result, nodeFilter]);
+    let nodes = result.graphData.nodes;
+    if (nodeFilter !== 'ALL') {
+      nodes = nodes.filter(n => n.data.type === nodeFilter);
+    }
+    if (nodeSearch.trim()) {
+      const q = nodeSearch.toLowerCase();
+      nodes = nodes.filter(n => 
+        (n.data.name && n.data.name.toLowerCase().includes(q)) ||
+        (n.data.file && n.data.file.toLowerCase().includes(q)) ||
+        (n.data.path && n.data.path.toLowerCase().includes(q)) ||
+        (n.data.id && n.data.id.toLowerCase().includes(q))
+      );
+    }
+    return nodes;
+  }, [result, nodeFilter, nodeSearch]);
 
   // Color Mapping Helper
   const getNodeColor = (type) => {
@@ -548,22 +560,36 @@ export default function PlatformDashboard() {
                     </p>
                   </div>
 
-                  {/* Filter Pills */}
-                  <div style={{ display: 'flex', gap: '0.5rem', background: '#090d16', padding: '0.3rem', borderRadius: '8px', border: '1px solid #334155' }}>
-                    {['ALL', 'FileNode', 'FunctionNode', 'EndpointNode', 'VulnerabilityNode', 'TestCaseNode'].map(filter => (
-                      <button
-                        key={filter}
-                        onClick={() => setNodeFilter(filter)}
-                        style={{
-                          background: nodeFilter === filter ? '#2563eb' : 'transparent',
-                          color: nodeFilter === filter ? '#fff' : '#94a3b8',
-                          border: 'none', padding: '0.35rem 0.7rem', borderRadius: '6px',
-                          fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer'
-                        }}
-                      >
-                        {filter}
-                      </button>
-                    ))}
+                  {/* Search & Filter Pills */}
+                  <div style={{ display: 'flex', gap: '0.8rem', alignItems: 'center' }}>
+                    <input
+                      type="text"
+                      value={nodeSearch}
+                      onChange={(e) => setNodeSearch(e.target.value)}
+                      placeholder="🔍 Search graph nodes..."
+                      style={{
+                        padding: '0.4rem 0.8rem', borderRadius: '8px',
+                        border: '1px solid #334155', background: '#090d16', color: '#fff',
+                        fontSize: '0.8rem', outline: 'none', width: '200px'
+                      }}
+                    />
+
+                    <div style={{ display: 'flex', gap: '0.4rem', background: '#090d16', padding: '0.3rem', borderRadius: '8px', border: '1px solid #334155' }}>
+                      {['ALL', 'FileNode', 'FunctionNode', 'EndpointNode', 'VulnerabilityNode', 'TestCaseNode'].map(filter => (
+                        <button
+                          key={filter}
+                          onClick={() => setNodeFilter(filter)}
+                          style={{
+                            background: nodeFilter === filter ? '#2563eb' : 'transparent',
+                            color: nodeFilter === filter ? '#fff' : '#94a3b8',
+                            border: 'none', padding: '0.35rem 0.7rem', borderRadius: '6px',
+                            fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer'
+                          }}
+                        >
+                          {filter}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 </div>
 
@@ -575,7 +601,7 @@ export default function PlatformDashboard() {
                 }}>
                   
                   {/* Visual Node Grid Canvas */}
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', alignContent: 'flex-start', maxHeight: '450px', overflowY: 'auto', padding: '0.5rem' }}>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', alignContent: 'flex-start', maxHeight: '600px', overflowY: 'auto', padding: '0.5rem' }}>
                     {filteredNodes.map(node => {
                       const color = getNodeColor(node.data.type);
                       const isSelected = selectedNode?.data.id === node.data.id;
