@@ -1,18 +1,49 @@
 /**
  * backend/src/graph/db.js
- * Persistent Code Knowledge Graph Engine & In-Memory Property Graph representation.
- * Supports Cypher-like queries, node creation, edge linking, and Graph-RAG token-budget sub-graph extraction.
+ * Enterprise Persistent Code Knowledge Graph Engine using Neo4j Driver + Dual In-Memory Property Graph.
+ * Supports real Cypher queries, graph node creation, edge linking, and Graph-RAG token-budget sub-graph extraction.
  */
+
+import neo4j from 'neo4j-driver';
 
 export class CodeKnowledgeGraph {
   constructor() {
     this.nodes = new Map(); // id -> Node
     this.edges = [];        // Edge Array
+
+    // Neo4j Driver Connection Setup
+    const uri = process.env.NEO4J_URI || 'bolt://localhost:7687';
+    const user = process.env.NEO4J_USER || 'neo4j';
+    const password = process.env.NEO4J_PASSWORD || 'password';
+
+    try {
+      this.driver = neo4j.driver(uri, neo4j.auth.basic(user, password));
+      this.isNeo4jActive = true;
+      console.log(`[Neo4j Graph Engine] Initialized Neo4j Driver for ${uri}`);
+    } catch (err) {
+      console.log(`[Neo4j Graph Engine Warning] Running in dual fallback mode (${err.message})`);
+      this.driver = null;
+      this.isNeo4jActive = false;
+    }
+  }
+
+  async runCypher(query, params = {}) {
+    if (!this.driver || !this.isNeo4jActive) return null;
+    const session = this.driver.session();
+    try {
+      const result = await session.run(query, params);
+      return result;
+    } catch (err) {
+      return null;
+    } finally {
+      await session.close();
+    }
   }
 
   clear() {
     this.nodes.clear();
     this.edges = [];
+    this.runCypher('MATCH (n) DETACH DELETE n').catch(() => {});
   }
 
   // Node Creators
@@ -20,23 +51,50 @@ export class CodeKnowledgeGraph {
     const id = `file:${filePath}`;
     const node = { id, label: 'FileNode', path: filePath, language, loc };
     this.nodes.set(id, node);
+
+    // Sync to Neo4j via Cypher MERGE
+    this.runCypher(
+      'MERGE (f:FileNode {id: $id}) SET f.path = $path, f.language = $language, f.loc = $loc',
+      { id, path: filePath, language: language || 'js', loc: loc || 0 }
+    );
+
     return node;
   }
 
   addFunctionNode(filePath, name, params, complexity) {
     const id = `func:${filePath}:${name}`;
-    const node = { id, label: 'FunctionNode', file: filePath, name, params, complexity };
+    const node = { id, label: 'FunctionNode', name, file: filePath, params, complexity };
     this.nodes.set(id, node);
-    // Link File -> CONTAINS -> Function
     this.addEdge(`file:${filePath}`, id, 'CONTAINS');
+
+    // Sync to Neo4j via Cypher MERGE
+    this.runCypher(
+      `MERGE (fn:FunctionNode {id: $id})
+       SET fn.name = $name, fn.params = $params, fn.complexity = $complexity, fn.file = $file
+       WITH fn
+       MERGE (f:FileNode {id: $fileId})
+       MERGE (f)-[:CONTAINS]->(fn)`,
+      { id, name, params: params || '', complexity: complexity || 1, file: filePath, fileId: `file:${filePath}` }
+    );
+
     return node;
   }
 
   addClassNode(filePath, name, extendsClass) {
     const id = `class:${filePath}:${name}`;
-    const node = { id, label: 'ClassNode', file: filePath, name, extends: extendsClass };
+    const node = { id, label: 'ClassNode', name, file: filePath, extends: extendsClass };
     this.nodes.set(id, node);
     this.addEdge(`file:${filePath}`, id, 'CONTAINS');
+
+    this.runCypher(
+      `MERGE (c:ClassNode {id: $id})
+       SET c.name = $name, c.extends = $extendsClass, c.file = $file
+       WITH c
+       MERGE (f:FileNode {id: $fileId})
+       MERGE (f)-[:CONTAINS]->(c)`,
+      { id, name, extendsClass: extendsClass || '', file: filePath, fileId: `file:${filePath}` }
+    );
+
     return node;
   }
 
@@ -46,6 +104,16 @@ export class CodeKnowledgeGraph {
     const node = { id, label: 'EndpointNode', name, file: filePath, method: method.toUpperCase(), path };
     this.nodes.set(id, node);
     this.addEdge(`file:${filePath}`, id, 'EXPOSES_ROUTE');
+
+    this.runCypher(
+      `MERGE (e:EndpointNode {id: $id})
+       SET e.method = $method, e.path = $path, e.file = $file, e.name = $name
+       WITH e
+       MERGE (f:FileNode {id: $fileId})
+       MERGE (f)-[:EXPOSES_ROUTE]->(e)`,
+      { id, method: method.toUpperCase(), path, file: filePath, name, fileId: `file:${filePath}` }
+    );
+
     return node;
   }
 
@@ -55,6 +123,16 @@ export class CodeKnowledgeGraph {
     const node = { id, label: 'VulnerabilityNode', name, filePath, line, type, severity, owasp, patch };
     this.nodes.set(id, node);
     this.addEdge(id, `file:${filePath}`, 'AFFECTS');
+
+    this.runCypher(
+      `MERGE (v:VulnerabilityNode {id: $id})
+       SET v.type = $type, v.severity = $severity, v.owasp = $owasp, v.line = $line, v.name = $name
+       WITH v
+       MERGE (f:FileNode {id: $fileId})
+       MERGE (v)-[:AFFECTS]->(f)`,
+      { id, type, severity, owasp: owasp || '', line: line || 1, name, fileId: `file:${filePath}` }
+    );
+
     return node;
   }
 
@@ -64,6 +142,16 @@ export class CodeKnowledgeGraph {
     const node = { id, label: 'TestCaseNode', name, testFile, targetFile, testCount, code };
     this.nodes.set(id, node);
     this.addEdge(id, `file:${targetFile}`, 'TESTS');
+
+    this.runCypher(
+      `MERGE (t:TestCaseNode {id: $id})
+       SET t.testFile = $testFile, t.targetFile = $targetFile, t.name = $name
+       WITH t
+       MERGE (f:FileNode {id: $targetFileId})
+       MERGE (t)-[:TESTS]->(f)`,
+      { id, testFile, targetFile, name, targetFileId: `file:${targetFile}` }
+    );
+
     return node;
   }
 
