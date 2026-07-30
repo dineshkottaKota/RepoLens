@@ -103,7 +103,7 @@ export function parseFileAST(filePath, content) {
     if (imp) imports.push(imp.trim());
   }
 
-  // Parse Exposed Routes
+  // Parse Exposed Routes & API Endpoints
   let rMatch;
   const rRegex = new RegExp(patterns.routes);
   while ((rMatch = rRegex.exec(content)) !== null) {
@@ -112,6 +112,23 @@ export function parseFileAST(filePath, content) {
       path: rMatch[2] || '/',
       file: filePath
     });
+  }
+
+  // Next.js App Router API Handler Parsing (e.g. export async function GET(req))
+  if (filePath.includes('/api/') || filePath.endsWith('route.js') || filePath.endsWith('route.ts')) {
+    const nextRouteRegex = /export\s+(?:async\s+)?function\s+(GET|POST|PUT|DELETE|PATCH)/gi;
+    let nMatch;
+    while ((nMatch = nextRouteRegex.exec(content)) !== null) {
+      const method = nMatch[1].toUpperCase();
+      let inferredPath = '/' + filePath.replace(/.*?(?:src\/app\/|app\/|pages\/)/, '').replace(/\/route\.(js|ts)$/, '').replace(/\.(js|ts)$/, '');
+      if (!inferredPath.startsWith('/')) inferredPath = '/' + inferredPath;
+
+      routes.push({
+        method,
+        path: inferredPath,
+        file: filePath
+      });
+    }
   }
 
   return {

@@ -42,7 +42,8 @@ export class CodeKnowledgeGraph {
 
   addEndpointNode(filePath, method, path) {
     const id = `route:${filePath}:${method}:${path}`;
-    const node = { id, label: 'EndpointNode', file: filePath, method, path };
+    const name = `${method.toUpperCase()} ${path}`;
+    const node = { id, label: 'EndpointNode', name, file: filePath, method: method.toUpperCase(), path };
     this.nodes.set(id, node);
     this.addEdge(`file:${filePath}`, id, 'EXPOSES_ROUTE');
     return node;
@@ -50,7 +51,8 @@ export class CodeKnowledgeGraph {
 
   addVulnerabilityNode(vulnId, filePath, line, type, severity, owasp, patch) {
     const id = `vuln:${vulnId}`;
-    const node = { id, label: 'VulnerabilityNode', filePath, line, type, severity, owasp, patch };
+    const name = `[${severity}] ${type}`;
+    const node = { id, label: 'VulnerabilityNode', name, filePath, line, type, severity, owasp, patch };
     this.nodes.set(id, node);
     this.addEdge(id, `file:${filePath}`, 'AFFECTS');
     return node;
@@ -58,7 +60,8 @@ export class CodeKnowledgeGraph {
 
   addTestCaseNode(testId, testFile, targetFile, testCount, code) {
     const id = `test:${testId}`;
-    const node = { id, label: 'TestCaseNode', testFile, targetFile, testCount, code };
+    const name = `Test Suite: ${testFile.split('/').pop()}`;
+    const node = { id, label: 'TestCaseNode', name, testFile, targetFile, testCount, code };
     this.nodes.set(id, node);
     this.addEdge(id, `file:${targetFile}`, 'TESTS');
     return node;
@@ -117,7 +120,7 @@ export class CodeKnowledgeGraph {
    */
   exportGraphJSON() {
     const nodes = Array.from(this.nodes.values()).map(n => ({
-      data: { id: n.id, label: n.name || n.path || n.id, type: n.label, ...n }
+      data: { ...n, id: n.id, label: n.name || n.path || n.id, type: n.label, vulnCategory: n.type }
     }));
 
     const edges = this.edges.map((e, idx) => ({
