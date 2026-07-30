@@ -1,7 +1,7 @@
 /**
  * backend/src/graph/db.js
- * Enterprise Persistent Code Knowledge Graph Engine using Neo4j Driver + Dual In-Memory Property Graph.
- * Supports real Cypher queries, graph node creation, edge linking, and Graph-RAG token-budget sub-graph extraction.
+ * Enterprise Persistent Code Knowledge Graph Engine supporting Neo4j Bolt (neo4j+s://) and HTTPS REST API (https://).
+ * Includes Dual In-Memory Property Graph fallback for zero downtime.
  */
 
 import neo4j from 'neo4j-driver';
@@ -12,25 +12,65 @@ export class CodeKnowledgeGraph {
     this.edges = [];        // Edge Array
 
     // Neo4j Cloud (AuraDB) or Local Connection Setup
-    const uri = process.env.NEO4J_URI || 'bolt://localhost:7687';
-    const user = process.env.NEO4J_USERNAME || process.env.NEO4J_USER || 'neo4j';
-    const password = process.env.NEO4J_PASSWORD || 'password';
-    this.database = process.env.NEO4J_DATABASE || null;
+    this.uri = process.env.NEO4J_URI || 'bolt://localhost:7687';
+    this.user = process.env.NEO4J_USERNAME || process.env.NEO4J_USER || 'neo4j';
+    this.password = process.env.NEO4J_PASSWORD || 'password';
+    this.database = process.env.NEO4J_DATABASE || 'neo4j';
 
-    try {
-      this.driver = neo4j.driver(uri, neo4j.auth.basic(user, password));
-      this.isNeo4jActive = true;
-      const isCloud = uri.startsWith('neo4j+s://') || uri.includes('databases.neo4j.io');
-      console.log(`[Neo4j ${isCloud ? 'AuraDB Cloud' : 'Graph Engine'}] Connected to ${uri} (User: ${user})`);
-    } catch (err) {
-      console.log(`[Neo4j Graph Engine Warning] Running in dual fallback mode (${err.message})`);
-      this.driver = null;
-      this.isNeo4jActive = false;
+    this.isHttpsMode = this.uri.startsWith('http://') || this.uri.startsWith('https://');
+    this.isNeo4jActive = true;
+
+    if (this.isHttpsMode) {
+      console.log(`[Neo4j HTTPS Engine] Configured for HTTPS REST API: ${this.uri} (User: ${this.user})`);
+    } else {
+      try {
+        this.driver = neo4j.driver(this.uri, neo4j.auth.basic(this.user, this.password));
+        const isCloud = this.uri.startsWith('neo4j+s://') || this.uri.includes('databases.neo4j.io');
+        console.log(`[Neo4j ${isCloud ? 'AuraDB Cloud' : 'Graph Engine'}] Connected via Bolt Protocol to ${this.uri} (User: ${this.user})`);
+      } catch (err) {
+        console.log(`[Neo4j Graph Engine Warning] Running in dual fallback mode (${err.message})`);
+        this.driver = null;
+        this.isNeo4jActive = false;
+      }
     }
   }
 
   async runCypher(query, params = {}) {
-    if (!this.driver || !this.isNeo4jActive) return null;
+    if (!this.isNeo4jActive) return null;
+
+    // 1. HTTPS Protocol Execution
+    if (this.isHttpsMode) {
+      try {
+        const cleanHost = this.uri.replace(/^https?:\/\//, '').replace(/\/$/, '');
+        const protocol = this.uri.startsWith('https://') ? 'https' : 'http';
+        const httpEndpoint = `${protocol}://${cleanHost}/db/${this.database}/tx/commit`;
+        const authHeader = 'Basic ' + Buffer.from(`${this.user}:${this.password}`).toString('base64');
+
+        const response = await fetch(httpEndpoint, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': authHeader
+          },
+          body: JSON.stringify({
+            statements: [{ statement: query, parameters: params }]
+          })
+        });
+
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+
+        const data = await response.json();
+        return data;
+      } catch (err) {
+        console.log(`[Neo4j HTTPS Warning] ${err.message}. Using in-memory fallback.`);
+        return null;
+      }
+    }
+
+    // 2. Bolt Protocol Execution (neo4j+s:// or bolt://)
+    if (!this.driver) return null;
     const sessionOpts = this.database ? { database: this.database } : {};
     const session = this.driver.session(sessionOpts);
     try {
@@ -38,7 +78,6 @@ export class CodeKnowledgeGraph {
       return result;
     } catch (err) {
       if (err.code === 'ServiceUnavailable' || err.message.includes('No routing servers')) {
-        // Suppress repeated connection logs if AuraDB instance is paused on console.neo4j.io
         this.isNeo4jActive = false;
         console.log('[Neo4j AuraDB Info] Instance is currently Paused or Resuming on console.neo4j.io. Falling back to in-memory graph engine.');
       }
@@ -60,7 +99,6 @@ export class CodeKnowledgeGraph {
     const node = { id, label: 'FileNode', path: filePath, language, loc };
     this.nodes.set(id, node);
 
-    // Sync to Neo4j via Cypher MERGE
     this.runCypher(
       'MERGE (f:FileNode {id: $id}) SET f.path = $path, f.language = $language, f.loc = $loc',
       { id, path: filePath, language: language || 'js', loc: loc || 0 }
@@ -75,7 +113,6 @@ export class CodeKnowledgeGraph {
     this.nodes.set(id, node);
     this.addEdge(`file:${filePath}`, id, 'CONTAINS');
 
-    // Sync to Neo4j via Cypher MERGE
     this.runCypher(
       `MERGE (fn:FunctionNode {id: $id})
        SET fn.name = $name, fn.params = $params, fn.complexity = $complexity, fn.file = $file
