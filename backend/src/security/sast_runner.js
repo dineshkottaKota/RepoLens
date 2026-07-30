@@ -119,7 +119,9 @@ export async function scanSecurityVulnerabilities(fileList, knowledgeGraph, apiK
               rule.name,
               rule.severity,
               rule.owasp,
-              suggestedFix
+              vulnObj.patch,
+              line.trim(),
+              rule.explanation
             );
           }
         }
@@ -156,7 +158,9 @@ export async function scanSecurityVulnerabilities(fileList, knowledgeGraph, apiK
           vulnObj.type,
           vulnObj.severity,
           vulnObj.owasp,
-          vulnObj.patch.fix
+          vulnObj.patch,
+          vulnObj.codeSnippet,
+          vulnObj.explanation
         );
       }
     });

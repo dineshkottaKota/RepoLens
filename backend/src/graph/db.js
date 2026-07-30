@@ -123,10 +123,24 @@ export class CodeKnowledgeGraph {
     return node;
   }
 
-  addVulnerabilityNode(vulnId, filePath, line, type, severity, owasp, patch) {
+  addVulnerabilityNode(vulnId, filePath, line, type, severity, owasp, patch, codeSnippet, explanation) {
     const id = `vuln:${vulnId}`;
     const name = `[${severity}] ${type}`;
-    const node = { id, label: 'VulnerabilityNode', name, filePath, line, type, severity, owasp, patch };
+    const patchObj = typeof patch === 'object' ? patch : { original: codeSnippet || '', fix: patch || '' };
+    const node = { 
+      id, 
+      label: 'VulnerabilityNode', 
+      vulnId, 
+      name, 
+      filePath, 
+      line, 
+      type, 
+      severity, 
+      owasp, 
+      patch: patchObj,
+      codeSnippet: codeSnippet || patchObj.original,
+      explanation: explanation || ''
+    };
     this.nodes.set(id, node);
     this.addEdge(id, `file:${filePath}`, 'AFFECTS');
     return node;
