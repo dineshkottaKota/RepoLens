@@ -14,8 +14,9 @@ export default function PlatformDashboard() {
   const [activeTab, setActiveTab] = useState('tests');
   const [copiedId, setCopiedId] = useState(null);
 
-  // Graph Filter State
+  // Graph Filter & Search State
   const [nodeFilter, setNodeFilter] = useState('ALL');
+  const [nodeSearch, setNodeSearch] = useState('');
   const [selectedNode, setSelectedNode] = useState(null);
 
   const handleIngest = async (e) => {
