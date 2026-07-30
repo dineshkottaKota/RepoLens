@@ -13,14 +13,15 @@ export class CodeKnowledgeGraph {
 
     // Neo4j Cloud (AuraDB) or Local Connection Setup
     const uri = process.env.NEO4J_URI || 'bolt://localhost:7687';
-    const user = process.env.NEO4J_USER || 'neo4j';
+    const user = process.env.NEO4J_USERNAME || process.env.NEO4J_USER || 'neo4j';
     const password = process.env.NEO4J_PASSWORD || 'password';
+    this.database = process.env.NEO4J_DATABASE || null;
 
     try {
       this.driver = neo4j.driver(uri, neo4j.auth.basic(user, password));
       this.isNeo4jActive = true;
       const isCloud = uri.startsWith('neo4j+s://') || uri.includes('databases.neo4j.io');
-      console.log(`[Neo4j ${isCloud ? 'AuraDB Cloud' : 'Graph Engine'}] Connected to ${uri}`);
+      console.log(`[Neo4j ${isCloud ? 'AuraDB Cloud' : 'Graph Engine'}] Connected to ${uri} (User: ${user})`);
     } catch (err) {
       console.log(`[Neo4j Graph Engine Warning] Running in dual fallback mode (${err.message})`);
       this.driver = null;
@@ -30,7 +31,8 @@ export class CodeKnowledgeGraph {
 
   async runCypher(query, params = {}) {
     if (!this.driver || !this.isNeo4jActive) return null;
-    const session = this.driver.session();
+    const sessionOpts = this.database ? { database: this.database } : {};
+    const session = this.driver.session(sessionOpts);
     try {
       const result = await session.run(query, params);
       return result;
